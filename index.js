@@ -105,7 +105,7 @@ io.on("connection", async (socket) => {
             if (getIndexInThread(chatroom.people_in_thread, socket.user._id) != undefined) {
             } else {
               people_in_thread = chatroom.people_in_thread.concat({
-                id: socket.user._id,
+                id: socket.user.id,
                 name: socket.user.username,
                 avatar: socket.user.avatar,
                 typing: false,
