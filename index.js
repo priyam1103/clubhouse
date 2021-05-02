@@ -15,6 +15,7 @@ const ChatRoom = require("./model/chatroom");
 require("./service/routes")(app);
 const server = http.createServer(app);
 const io = require("socket.io")(server);
+const { sendMail } = require("./helper/Mailer");
 
 connectDb().then(() => {
   server.listen(config.PORT, () => {
@@ -45,11 +46,11 @@ function getIndexInThread(arr, val) {
   return index;
 }
 var job = new CronJob(
-  "* * * * * *",
+  "* 1 * * * *",
   async function () {
     console.log("cdkl");
     var date = new Date();
-    console.log(date.toUTCString())
+    console.log(date.toUTCString());
     const chatrooms = await ChatRoom.find();
     for (var i = 0; i < chatrooms.length; i++) {
       if (chatrooms[i].schedule_later) {
@@ -100,10 +101,55 @@ io.on("connection", async (socket) => {
       if (chatroom) {
         if (chatroom.chat_priv) {
           if (chatroom.priv_members.includes(socket.user.emailId)) {
-            const people_in_thread = chatroom.people_in_thread.concat({
+            var people_in_thread = chatroom.people_in_thread;
+            if (getIndexInThread(chatroom.people_in_thread, socket.user._id) != undefined) {
+            } else {
+              people_in_thread = chatroom.people_in_thread.concat({
+                id: socket.user._id,
+                name: socket.user.username,
+                avatar: socket.user.avatar,
+                typing: false,
+                raisedhand: false,
+              });
+            }
+              const thread = await ChatRoom.findByIdAndUpdate(
+                {
+                  _id: data.tid,
+                },
+                { people_in_thread: people_in_thread },
+                { new: true }
+              );
+              await User.findOneAndUpdate(
+                { _id: socket.user._id },
+                { $set: { current_chatroom: data.tid } },
+                { upsert: true }
+              );
+              callback({ auth: true, thread: thread, success: true });
+              socket.join(data.tid);
+              io.to(chatroom._id).emit(
+                "message",
+                `${socket.user.username} joined the thread`
+              );
+
+              io.to(chatroom._id).emit("threadupdate", { thread: thread });
+            
+          } else {
+            callback({ auth: false });
+          }
+        } else {
+          var people_in_thread = chatroom.people_in_thread;
+
+          if (getIndexInThread(chatroom.people_in_thread, socket.user._id) != undefined) {
+          } else {
+            people_in_thread = chatroom.people_in_thread.concat({
               id: socket.user.id,
               name: socket.user.username,
+              typing: false,
+              raisedhand: false,
+              avatar: socket.user.avatar,
             });
+          }
+            console.log(people_in_thread);
             const thread = await ChatRoom.findByIdAndUpdate(
               {
                 _id: data.tid,
@@ -116,35 +162,16 @@ io.on("connection", async (socket) => {
               { $set: { current_chatroom: data.tid } },
               { upsert: true }
             );
-            callback({ auth: true, thread: thread });
             socket.join(data.tid);
+            callback({ auth: true, thread: thread });
+            io.to(chatroom._id).emit(
+              "message",
+              `${socket.user.username} joined the thread`
+            );
+
             io.to(chatroom._id).emit("threadupdate", { thread: thread });
-          } else {
-            callback({ auth: false });
           }
-        } else {
-          const people_in_thread = chatroom.people_in_thread.concat({
-            id: socket.user.id,
-            name: socket.user.username,
-            typing: false,
-            raisedhand: false,
-          });
-          const thread = await ChatRoom.findByIdAndUpdate(
-            {
-              _id: data.tid,
-            },
-            { people_in_thread: people_in_thread },
-            { new: true }
-          );
-          await User.findOneAndUpdate(
-            { _id: socket.user._id },
-            { $set: { current_chatroom: data.tid } },
-            { upsert: true }
-          );
-          callback({ auth: true, thread: thread });
-          socket.join(data.tid);
-          io.to(chatroom._id).emit("threadupdate", { thread: thread });
-        }
+        
       } else {
         callback({ auth: false });
       }
@@ -168,7 +195,7 @@ io.on("connection", async (socket) => {
           { raised_hand: raised_hand },
           { new: true }
         );
-        callback({ thread: thread });
+        callback({ thread: thread, success: true });
         io.to(chatroom._id).emit("threadupdate", { thread: thread });
       }
       callback({ error: true });
@@ -198,14 +225,14 @@ io.on("connection", async (socket) => {
           { $set: { allowed_to_chat: allowed_to_chat, raised_hand: s } },
           { new: true }
         );
-        callback({ thread: thread });
+        callback({ thread: thread, success: true });
         io.to(chatroom._id).emit("threadupdate", { thread: thread });
       }
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("sendmessage", async (data) => {
+  socket.on("sendmessage", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       if (chatroom) {
@@ -214,19 +241,22 @@ io.on("connection", async (socket) => {
             type: data.type,
             body: data.body,
             username: socket.user.username,
-            image: socket.user.image,
+            image: socket.user.avatar,
             emojies: [],
+            timing: new Date(),
           };
         } else if (data.type === "reply") {
           var chat = {
             type: data.type,
             body: data.body,
             username: socket.user.username,
-            image: socket.user.image,
+            image: socket.user.avatar,
             emojies: [],
+            timing: new Date(),
             ofuser: data.ofuser,
             ofuserimage: data.ofuserimage,
             ofusercomment: data.ofusercomment,
+            ofusertimig: data.timing,
           };
         }
         const chats = chatroom.chats.concat(chat);
@@ -237,56 +267,15 @@ io.on("connection", async (socket) => {
           { $set: { chats: chats } },
           { new: true }
         );
+        callback({ success: true });
         io.to(chatroom._id).emit("threadupdate", { thread: thread });
       }
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
 
-  socket.on("addemoji", async (data) => {
-    try {
-      const chatroom = await ChatRoom.findOne({ _id: data.tid });
-      const chats = chatroom.chats;
-      console.log(data);
-      if (chatroom) {
-        var chat = chats[data.index];
-        console.log(chat);
-        var i = false;
-        for (var w = 0; w < chat.emojies.length; w++) {
-          if (chat.emojies[w].unified === data.emoji.unified) {
-            i = true;
-            chat.emojies[w].count = chat.emojies[w].count + 1;
-            break;
-          }
-        }
-        if (!i) {
-          var em = {
-            ...data.emoji,
-            count: 1,
-          };
-          console.log(em, "cdnkdj");
-          var emc = chat.emoji.concat(em);
-          chat.emoji = emc;
-          console.log(chat);
-        }
-        console.log(chat);
-        chats[data.index] = chat;
-      }
-      const thread = await ChatRoom.findByIdAndUpdate(
-        {
-          _id: data.tid,
-        },
-        { $set: { chats: chats } },
-        { new: true }
-      );
-      io.to(chatroom._id).emit("threadupdate", { thread: thread });
-    } catch (err) {
-      console.log(err);
-    }
-  });
-
-  socket.on("addtohighlights", async (data) => {
+  socket.on("addtohighlights", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       console.log(chatroom);
@@ -304,14 +293,16 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("addmemberstoprivatechat", async (data) => {
+  socket.on("addmemberstoprivatechat", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
+
       const thread = await ChatRoom.findByIdAndUpdate(
         {
           _id: data.tid,
@@ -323,17 +314,25 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      for (var i = 0; i < data.members.length; i++) {
+        sendMail(
+          `Hi, ${socket.user.username} has invited you to join a thread having a topic ${chatroom.topic}
+        Joining link - http://localhost:3000/thread/${chatroom._id}`,
+          data.members[i],
+          "Thread invitation"
+        );
+      }
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
 
-  socket.on("startedtyping", async (data) => {
+  socket.on("startedtyping", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       const index = getIndexInThread(chatroom.people_in_thread, socket.user.id);
-      console.log(index);
       var pit = chatroom.people_in_thread[index];
       pit.typing = true;
       chatroom.people_in_thread[index] = pit;
@@ -348,12 +347,13 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("stoppedtyping", async (data) => {
+  socket.on("stoppedtyping", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       const index = getIndexInThread(chatroom.people_in_thread, socket.user.id);
@@ -371,13 +371,14 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
 
-  socket.on("makeadmin", async (data) => {
+  socket.on("makeadmin", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       const user = await User.findOne({ _id: data.uid });
@@ -393,12 +394,13 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("savethread", async (data) => {
+  socket.on("savethread", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       const thread = await ChatRoom.findByIdAndUpdate(
@@ -413,12 +415,13 @@ io.on("connection", async (socket) => {
         },
         { new: true }
       );
+      callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("savethreadandclose", async (data,callback) => {
+  socket.on("savethreadandclose", async (data, callback) => {
     try {
       const thread = await ChatRoom.findByIdAndUpdate(
         {
@@ -428,26 +431,93 @@ io.on("connection", async (socket) => {
           $set: {
             issave: true,
             closed: true,
-            islive:false
+            islive: false,
           },
         },
         { new: true }
       );
-      
-      io.to(thread._id).emit("closethread");
+      callback({ success: true });
+
+      io.to(thread._id).emit("closethread", {
+        message:
+          "This thread is saved and closed by the admin and you will be redirected to home page in 5 seconds",
+      });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
     }
   });
-  socket.on("deletethreadandclose", async (data,callback) => {
+  socket.on("deletethreadandclose", async (data, callback) => {
     try {
       const chatroom = await ChatRoom.findOne({ _id: data.tid });
       await ChatRoom.findByIdAndDelete({
         _id: data.tid,
       });
-      io.to(chatroom._id).emit("closethread");
+      io.to(data.tid).emit("closethread", {
+        message:
+          "This thread is deleted and closed by the admin and you will be redirected to home page in 5 seconds",
+      });
+      callback({ success: true });
     } catch (err) {
-      console.log(err);
+      callback({ success: false });
+    }
+  });
+  socket.on("updatethreadsettings", async (data, callback) => {
+    try {
+      const chatroom = await ChatRoom.findOne({ _id: data.tid });
+      if (chatroom.text_priv !== data.text_priv) {
+        if (!data.text_priv) {
+          var thread = await ChatRoom.findOneAndUpdate(
+            {
+              _id: chatroom._id,
+            },
+            { $set: { text_priv: false, allowed_to_chat: [] } },
+            { new: true }
+          );
+          io.to(chatroom._id).emit("threadupdate", { thread: thread });
+          callback({ success: true });
+        } else {
+          console.log("cdk");
+          var thread_ = await ChatRoom.findOneAndUpdate(
+            {
+              _id: chatroom._id,
+            },
+            { $set: { text_priv: true, allowed_to_chat: [], raised_hand: [] } },
+            { new: true }
+          );
+          io.to(chatroom._id).emit("threadupdate", { thread: thread_ });
+          callback({ success: true });
+        }
+      }
+      if (chatroom.chat_priv !== data.chat_priv) {
+        if (data.chat_priv) {
+          var allowed = [];
+          for (var i = 0; i < chatroom.people_in_thread.length; i++) {
+            const user_ = await User.findById(chatroom.people_in_thread[i].id);
+            allowed.push(user_.emailId);
+          }
+          var thread__ = await ChatRoom.findOneAndUpdate(
+            {
+              _id: chatroom._id,
+            },
+            { $set: { chat_priv: true, priv_members: allowed } },
+            { new: true }
+          );
+          io.to(chatroom._id).emit("threadupdate", { thread: thread__ });
+          callback({ success: true });
+        } else {
+          var thread___ = await ChatRoom.findOneAndUpdate(
+            {
+              _id: chatroom._id,
+            },
+            { $set: { chat_priv: false, priv_members: [] } },
+            { new: true }
+          );
+          io.to(chatroom._id).emit("threadupdate", { thread: thread___ });
+          callback({ success: true });
+        }
+      }
+    } catch (err) {
+      callback({ success: false });
     }
   });
   socket.on("disconnect", async (data) => {
@@ -461,17 +531,17 @@ io.on("connection", async (socket) => {
       const chatroom = await ChatRoom.findOne({ _id: user.current_chatroom });
 
       socket.leave(user.current_chatroom);
-
-      await chatroom.people_in_thread.splice(
-        getIndex(chatroom.people_in_thread, { id: socket.user.id }),
-        1
-      );
+      if (chatroom.people_in_thread) {
+        await chatroom.people_in_thread.splice(
+          getIndex(chatroom.people_in_thread, { id: socket.user.id }),
+          1
+        );
+      }
       if (chatroom.createdbyid == user._id) {
         if (chatroom.people_in_thread.length > 0) {
           const toadmin = await User.findOne({
             _id: chatroom.people_in_thread[0].id,
           });
-          console.log(toadmin.emailId, "todadmin");
           if (toadmin) {
             const thread_ = await ChatRoom.findByIdAndUpdate(
               {
@@ -486,8 +556,6 @@ io.on("connection", async (socket) => {
               },
               { new: true }
             );
-            //  console.log(thread_, "vjkfbdjb")
-
             io.to(chatroom._id).emit("threadupdate", { thread: thread_ });
           }
         } else {
@@ -505,7 +573,7 @@ io.on("connection", async (socket) => {
                 $set: {
                   people_in_thread: chatroom.people_in_thread,
                   closed: true,
-                  islive:false
+                  islive: false,
                 },
               },
               { new: true }

@@ -8,14 +8,14 @@ const UserSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    avatar: {
+      type: String,
+    },
     verification: {
       otp: {
         type: String,
         default: () => Math.floor(100000 + Math.random() * 900000),
       },
-    },
-    image: {
-      type:String
     },
     username: {
       type: String,

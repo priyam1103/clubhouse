@@ -1,5 +1,6 @@
 const User = require("../model/user");
 const ChatRoom = require("../model/chatroom");
+const { sendMail } = require("../helper/Mailer");
 
 exports.createChatRoom = async function (req, res) {
   try {
@@ -12,12 +13,24 @@ exports.createChatRoom = async function (req, res) {
         createdbyid: user._id,
         islive: req.body.schedule_later ? false : true,
       });
+      if (req.body.chat_priv) {
+        for (var i = 0; i < req.body.priv_members.length; i++) {
+          sendMail(
+            `Hi, ${user.username} has invited you to join a thread having a topic ${req.body.topic}
+          Joining link - http://localhost:3000/thread/${chatroom._id}`,
+            req.body.priv_members[i],
+            "Thread Invitation"
+          );
+        }
+      }
       await chatroom.save();
       res.status(200).json({ chatroom });
     } else {
       res.status(401).json({ message: "No users" });
     }
-  } catch (err) {}
+  } catch (err) {
+    res.status(400).json({ message: "error" });
+  }
 };
 
 exports.getThread = async function (req, res) {
@@ -36,15 +49,23 @@ exports.getThread = async function (req, res) {
 
 exports.getChatRoom = async function (req, res) {
   try {
-    const chatrooms = await ChatRoom.find();
-    const upcomingchatrooms = await ChatRoom.find({ schedule_later: true });
-    const savedchatrooms = await ChatRoom.find({ closed: true });
-    const livechatrooms = await ChatRoom.find({ islive: true });
+    const chatrooms = await ChatRoom.find({ chat_priv: false });
+    const upcomingchatrooms = await ChatRoom.find({
+      $and: [{ schedule_later: true }, { chat_priv: false }],
+    });
+    const savedchatrooms = await ChatRoom.find({
+      $and: [{ closed: true }, { chat_priv: false }],
+    });
+    const livechatrooms = await ChatRoom.find({
+      $and: [{ islive: true }, { chat_priv: false }],
+    });
 
     res
       .status(200)
       .json({ chatrooms, upcomingchatrooms, savedchatrooms, livechatrooms });
-  } catch (err) {}
+  } catch (err) {
+    res.status(400).json({ message: "error" });
+  }
 };
 exports.mychatrooms = async function (req, res) {
   try {
@@ -52,9 +73,36 @@ exports.mychatrooms = async function (req, res) {
     const user = await User.findById(id);
     if (user) {
       const chatrooms = await ChatRoom.find({ createdbyid: id });
-      res.status(200).json({ chatrooms });
+
+      const upcomingchatrooms = await ChatRoom.find({
+        $and: [{ schedule_later: true }, { createdbyid: id }],
+      });
+      const savedchatrooms = await ChatRoom.find({
+        $and: [{ closed: true }, { createdbyid: id }],
+      });
+      const livechatrooms = await ChatRoom.find({
+        $and: [{ islive: true }, { createdbyid: id }],
+      });
+
+      const priv_chats = await ChatRoom.find({ chat_priv: true });
+      const privatechatrooms = [];
+      for (var i = 0; i < priv_chats.length; i++) {
+        if (priv_chats[i].priv_members.includes(user.emailId)) {
+          privatechatrooms.push(priv_chats[i]);
+        }
+      }
+
+      res.status(200).json({
+        chatrooms,
+        privatechatrooms,
+        livechatrooms,
+        upcomingchatrooms,
+        savedchatrooms,
+      });
     }
-  } catch (err) {}
+  } catch (err) {
+    res.status(400).json({ message: "error" });
+  }
 };
 
 exports.getUpcomingChatrooms = async function (req, res) {
@@ -63,20 +111,19 @@ exports.getUpcomingChatrooms = async function (req, res) {
     res.status(200).json({ chatrooms });
   } catch (err) {}
 };
-exports.deleteThread = async function (req,res) {
+exports.deleteThread = async function (req, res) {
   try {
     const id = res.locals._id;
     const user = await User.findById(id);
     const tid = req.params;
-    console.log(tid)
+    console.log(tid);
     if (user) {
       await ChatRoom.findByIdAndDelete({ _id: tid.tid });
 
       const chatrooms = await ChatRoom.find({ createdbyid: id });
       res.status(200).json({ chatrooms });
     }
-
   } catch (err) {
-    console.log(err)
+    res.status(400).json({ message: "error" });
   }
-}
+};
