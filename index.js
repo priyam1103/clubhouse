@@ -348,6 +348,7 @@ io.on("connection", async (socket) => {
       callback({ success: true });
       io.to(chatroom._id).emit("threadupdate", { thread: thread });
     } catch (err) {
+      console.log(err)
       callback({ success: false });
     }
   });
