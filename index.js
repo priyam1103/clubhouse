@@ -46,7 +46,7 @@ function getIndexInThread(arr, val) {
   return index;
 }
 var job = new CronJob(
-  "* 1 * * * *",
+  " */1 * * * *",
   async function () {
     console.log("cdkl");
     var date = new Date();
@@ -242,7 +242,6 @@ io.on("connection", async (socket) => {
             body: data.body,
             username: socket.user.username,
             image: socket.user.avatar,
-            emojies: [],
             timing: new Date(),
           };
         } else if (data.type === "reply") {
@@ -251,12 +250,11 @@ io.on("connection", async (socket) => {
             body: data.body,
             username: socket.user.username,
             image: socket.user.avatar,
-            emojies: [],
             timing: new Date(),
             ofuser: data.ofuser,
             ofuserimage: data.ofuserimage,
             ofusercomment: data.ofusercomment,
-            ofusertimig: data.timing,
+            ofusertiming: data.timing,
           };
         }
         const chats = chatroom.chats.concat(chat);
