@@ -34,7 +34,7 @@ exports.sendOtp = async function (req, res) {
       });
       await user_.save();
       sendMail(
-        `You otp is ${user.verification.otp}`,
+        `You otp is ${user_.verification.otp}`,
         user_.emailId,
         "Email verification"
       );
