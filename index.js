@@ -315,7 +315,7 @@ io.on("connection", async (socket) => {
       for (var i = 0; i < data.members.length; i++) {
         sendMail(
           `Hi, ${socket.user.username} has invited you to join a thread having a topic ${chatroom.topic}
-        Joining link - http://localhost:3000/thread/${chatroom._id}`,
+        Joining link - https://threadchat.vercel.app/thread/${chatroom._id}`,
           data.members[i],
           "Thread invitation"
         );

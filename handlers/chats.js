@@ -17,7 +17,7 @@ exports.createChatRoom = async function (req, res) {
         for (var i = 0; i < req.body.priv_members.length; i++) {
           sendMail(
             `Hi, ${user.username} has invited you to join a thread having a topic ${req.body.topic}
-          Joining link - http://localhost:3000/thread/${chatroom._id}`,
+          Joining link - https://threadchat.vercel.app/thread/${chatroom._id}`,
             req.body.priv_members[i],
             "Thread Invitation"
           );
