@@ -67,7 +67,7 @@ var job = new CronJob(
   },
   null,
   true,
-  "America/Los_Angeles"
+  "Asia/Kolkata"
 );
 job.start();
 io.use(async (socket, next) => {
